@@ -1,83 +1,18 @@
 spring:
   application:
     name: crm-auth-service
-
-  datasource:
-    url: jdbc:postgresql://localhost:${DB_PORT:5433}/${POSTGRES_DB:authservice_dev}
-    username: ${POSTGRES_USER:dev_user}
-    password: ${POSTGRES_PASSWORD:dev_pass}
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
-    hibernate:
-      ddl-auto: ${DDL_AUTO:none}
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
-        use_sql_comments: true
-        # Enable Hibernate filters
-        filter:
-          enabled: true
-
-  # Flyway Configuration (Simplified)
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-    baseline-version: 0
-    table: flyway_schema_history
-    sql-migration-prefix: V
-    repeatable-sql-migration-prefix: R
-    clean-disabled: false
-    clean-on-validation-error: true
-
-  cache:
-    type: redis
-
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      timeout: 2000ms
-
+  config:
+    import: "optional:configserver:http://localhost:8888"
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
-# JWT Configuration
-jwt:
-  secret: ${JWT_SECRET:changeMeInProductionThisIsAVeryLongSecretKey123456789}
-  expiration: ${JWT_EXPIRATION:86400000}
-  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
 
-# Super Admin Configuration
-app:
-  super-admin:
-    email: ${SUPER_ADMIN_EMAIL:admin@crm.com}
-    password: ${SUPER_ADMIN_PASSWORD:SuperAdmin123!}
-    first-name: ${SUPER_ADMIN_FIRSTNAME:Super}
-    last-name: ${SUPER_ADMIN_LASTNAME:Admin}
+  datasource:
+    url: jdbc:h2:mem:localdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
 
-  # Optional: Clean database on startup (DEV ONLY)
+
   flyway:
-    clean-on-startup: ${FLYWAY_CLEAN_ON_STARTUP:false}
-
-# Logging Configuration
-logging:
-  level:
-    root: INFO
-    com.crm.AuthService: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-    org.flywaydb: INFO
-
-# Actuator Configuration
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-  endpoint:
-    health:
-      show-details: always
+    enabled: false

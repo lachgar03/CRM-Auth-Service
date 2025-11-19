@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.3</version>
+        <version>3.4.0</version>
         <relativePath/>
     </parent>
 
@@ -71,16 +71,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Flyway Database Migration -->
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
 
         <!-- JWT -->
         <dependency>
@@ -137,10 +127,11 @@
             <scope>test</scope>
         </dependency>
 
+
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 
@@ -185,20 +176,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Flyway Maven Plugin (for manual migrations if needed) -->
-            <plugin>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-maven-plugin</artifactId>
-                <version>10.4.1</version>
-                <configuration>
-                    <url>jdbc:postgresql://localhost:${env.DB_PORT}/${env.POSTGRES_DB}</url>
-                    <user>${env.POSTGRES_USER}</user>
-                    <password>${env.POSTGRES_PASSWORD}</password>
-                    <locations>
-                        <location>filesystem:src/main/resources/db/migration</location>
-                    </locations>
-                </configuration>
-            </plugin>
+
         </plugins>
     </build>
 
