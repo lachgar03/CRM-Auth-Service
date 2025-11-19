@@ -1,11 +1,13 @@
 package com.crm.AuthService.security;
 
+import jakarta.persistence.EntityManager;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Session;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,6 +17,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT Authentication Filter with Hibernate tenant filtering.
+ * Extracts tenant ID from JWT and enables Hibernate filter for automatic tenant isolation.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -22,7 +28,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
-    private final TenantSchemaResolver tenantSchemaResolver;
+    private final EntityManager entityManager;
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -32,27 +39,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             final String authHeader = request.getHeader("Authorization");
-            final String jwt;
-            final String username;
-            final Long tenantId;
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 filterChain.doFilter(request, response);
                 return;
             }
 
-            jwt = authHeader.substring(7);
+            final String jwt = authHeader.substring(7);
+            final String username;
+            final Long tenantId;
 
             try {
                 username = jwtService.extractUsername(jwt);
                 tenantId = jwtService.extractTenantId(jwt);
 
+                // Set tenant context FIRST
                 if (tenantId != null) {
                     TenantContextHolder.setTenantId(tenantId);
-                    tenantSchemaResolver.setCurrentTenantSchema(tenantId);
-                    log.debug("Tenant context established from JWT: tenantId={}", tenantId);
+
+                    // Enable Hibernate filter for automatic tenant isolation
+                    Session session = entityManager.unwrap(Session.class);
+                    session.enableFilter("tenantFilter")
+                            .setParameter("tenantId", tenantId);
+
+                    log.debug("Tenant filter enabled: tenantId={}", tenantId);
                 }
 
+                // Then authenticate user
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
@@ -69,23 +82,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         );
 
                         SecurityContextHolder.getContext().setAuthentication(authToken);
-                        log.debug("User authenticated successfully: username={}, tenantId={}",
-                                username, tenantId);
+                        log.debug("User authenticated: username={}, tenantId={}", username, tenantId);
                     } else {
                         log.warn("Invalid JWT token for user: {}", username);
                     }
                 }
+
             } catch (Exception e) {
                 log.error("Error processing JWT token: {}", e.getMessage());
-
             }
 
             filterChain.doFilter(request, response);
 
         } finally {
-            tenantSchemaResolver.clearCurrentTenantSchema();
+            // CRITICAL: Always clear tenant context
             TenantContextHolder.clear();
-            log.trace("Tenant context and shama resolver cleared after request");
+            log.trace("Tenant context cleared after request");
         }
     }
 }

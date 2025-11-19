@@ -101,7 +101,6 @@ public class AuthHelper {
                 .roleIds(Set.of(adminRole.getId())) // FIXED: Use roleIds
                 // .tenant(tenant) // REMOVED: User entity does not have this field
                 .enabled(true)
-                .createdAt(LocalDateTime.now())
                 .build();
     }
 

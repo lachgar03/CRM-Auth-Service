@@ -2,7 +2,6 @@ package com.crm.AuthService.config;
 
 import com.crm.AuthService.auth.dtos.TenantRegistrationRequest;
 import com.crm.AuthService.auth.services.TenantRegistrationService;
-import com.crm.AuthService.migration.FlywayMigrationService;
 import com.crm.AuthService.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,13 +11,16 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-
+/**
+ * Simplified Database Initializer.
+ * No schema migration needed - Flyway runs automatically.
+ * Just ensures master tenant exists.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DatabaseInitializer {
 
-    private final FlywayMigrationService flywayMigrationService;
     private final TenantRepository tenantRepository;
     private final TenantRegistrationService tenantRegistrationService;
 
@@ -37,8 +39,8 @@ public class DatabaseInitializer {
     private static final String MASTER_TENANT_SUBDOMAIN = "admin";
 
     /**
-     * S'exécute APRÈS que Spring Boot soit complètement démarré
-     * Order(1) = Priorité haute pour s'exécuter en premier
+     * Runs after Spring Boot is fully started.
+     * Checks if master tenant exists, creates it if not.
      */
     @EventListener(ApplicationReadyEvent.class)
     @Order(1)
@@ -48,13 +50,11 @@ public class DatabaseInitializer {
         log.info("======================================");
 
         try {
-            // ÉTAPE 1 : Migrer le schéma partagé (roles, permissions, tenants)
-            log.info("STEP 1: Migrating shared schema...");
-            flywayMigrationService.migrateSharedSchema();
-            log.info("✅ Shared schema migrated successfully");
+            // Flyway has already run at this point (auto-configured by Spring Boot)
+            log.info("✅ Flyway migration completed (auto-configured)");
 
-            // ÉTAPE 2 : Vérifier et créer le tenant master si nécessaire
-            log.info("STEP 2: Checking master tenant...");
+            // Check and create master tenant if needed
+            log.info("STEP: Checking master tenant...");
             bootstrapMasterTenant();
 
             log.info("======================================");
@@ -88,13 +88,12 @@ public class DatabaseInitializer {
 
         try {
             tenantRegistrationService.registerTenant(request);
-            log.info("✅ Master tenant registration submitted successfully");
+            log.info("✅ Master tenant created successfully");
             log.info("   Subdomain: {}", MASTER_TENANT_SUBDOMAIN);
             log.info("   Admin Email: {}", adminEmail);
-            log.info("   ⏳ Provisioning will complete asynchronously...");
         } catch (Exception e) {
-            log.error("❌ Failed to register master tenant", e);
-            throw new RuntimeException("Master tenant registration failed", e);
+            log.error("❌ Failed to create master tenant", e);
+            throw new RuntimeException("Master tenant creation failed", e);
         }
     }
 }

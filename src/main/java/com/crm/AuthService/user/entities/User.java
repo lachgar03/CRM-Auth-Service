@@ -1,18 +1,21 @@
 package com.crm.AuthService.user.entities;
 
+import com.crm.AuthService.auth.entities.TenantAwareEntity;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-
+/**
+ * User entity with tenant isolation.
+ * Extends TenantAwareEntity to automatically handle tenant_id and filtering.
+ */
 @Entity
 @Table(name = "users")
 @Getter
@@ -20,7 +23,7 @@ import java.util.stream.Collectors;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User implements UserDetails {
+public class User extends TenantAwareEntity implements UserDetails {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +35,7 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String lastName;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String email;
 
     @Column(nullable = false)
@@ -54,7 +57,10 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private boolean credentialsNonExpired = true;
 
-
+    /**
+     * Store role IDs (references to global roles table).
+     * This is an element collection, not a full @ManyToMany.
+     */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
             name = "user_roles",
@@ -64,31 +70,27 @@ public class User implements UserDetails {
     @Builder.Default
     private Set<Long> roleIds = new HashSet<>();
 
-
-    @Transient
-    private Long tenantId;
-
-    @Transient
-    private String tenantName;
-
-
+    /**
+     * Transient fields loaded at runtime from UserDetailsService.
+     * These are NOT persisted to the database.
+     */
     @Transient
     @Builder.Default
     private Set<String> roleNames = new HashSet<>();
 
     @Transient
-    @Builder.Default
-    private Set<String> permissions = new HashSet<>();
+    private String tenantName;
 
     @Transient
     private String tenantStatus;
 
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @Transient
+    @Builder.Default
+    private Set<String> permissions = new HashSet<>();
 
-    @Column
-    private LocalDateTime updatedAt;
-
+    // ============================================================
+    // UserDetails Implementation
+    // ============================================================
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -122,19 +124,9 @@ public class User implements UserDetails {
         return enabled;
     }
 
-
-    @PrePersist
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-
+    // ============================================================
+    // Helper Methods
+    // ============================================================
 
     public void addRole(Long roleId) {
         if (this.roleIds == null) {
@@ -153,7 +145,6 @@ public class User implements UserDetails {
         return roleNames != null && roleNames.contains(roleName);
     }
 
-
     public boolean hasPermission(String permission) {
         return permissions != null && permissions.contains(permission);
     }
@@ -165,7 +156,7 @@ public class User implements UserDetails {
                 ", email='" + email + '\'' +
                 ", enabled=" + enabled +
                 ", roleCount=" + (roleIds != null ? roleIds.size() : 0) +
-                ", tenantId=" + tenantId +
+                ", tenantId=" + getTenantId() +
                 '}';
     }
 

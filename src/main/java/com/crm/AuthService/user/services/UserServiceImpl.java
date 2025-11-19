@@ -116,7 +116,6 @@ public class UserServiceImpl implements UserService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .roleIds(roleIds)
                 .enabled(true)
-                .createdAt(LocalDateTime.now())
                 .build();
 
         User savedUser = userRepository.save(user);
