@@ -2,6 +2,7 @@ package com.crm.AuthService.config;
 
 import com.crm.AuthService.security.CustomUserDetailsService;
 import com.crm.AuthService.security.JwtAuthenticationFilter;
+import com.crm.AuthService.security.TenantResolutionFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,8 +28,9 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Simplified Security Configuration.
- * Removed TenantResolutionFilter - tenant context is set by JwtAuthenticationFilter.
+ * Security Configuration with proper filter ordering:
+ * 1. TenantResolutionFilter - sets tenant context from headers
+ * 2. JwtAuthenticationFilter - authenticates and validates JWT
  */
 @Configuration
 @EnableWebSecurity
@@ -37,6 +39,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final TenantResolutionFilter tenantResolutionFilter;
     private final CustomUserDetailsService userDetailsService;
 
     @Bean
@@ -61,7 +64,11 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // CRITICAL: Filter order matters!
+                // 1. TenantResolutionFilter first (sets context from headers)
+                .addFilterBefore(tenantResolutionFilter, UsernamePasswordAuthenticationFilter.class)
+                // 2. JwtAuthenticationFilter second (authenticates with JWT)
+                .addFilterAfter(jwtAuthenticationFilter, TenantResolutionFilter.class);
 
         return http.build();
     }

@@ -3,7 +3,6 @@ package com.crm.AuthService.auth.services;
 import com.crm.AuthService.auth.dtos.AuthResponse;
 import com.crm.AuthService.auth.dtos.TenantRegistrationRequest;
 import com.crm.AuthService.role.entities.Role;
-
 import com.crm.AuthService.security.JwtService;
 import com.crm.AuthService.security.TenantContextHolder;
 import com.crm.AuthService.tenant.entities.Tenant;
@@ -15,8 +14,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -24,18 +25,16 @@ public class AuthHelper {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
-
     @Value("${jwt.expiration}")
     private Long jwtExpiration;
+
     private static final String TENANT_STATUS_ACTIVE = "ACTIVE";
     private static final String TOKEN_TYPE_BEARER = "Bearer";
 
     private static final List<String> RESERVED_SUBDOMAINS = List.of(
-             "api", "www", "app", "test", "staging", "prod", "production",
+            "api", "www", "app", "test", "staging", "prod", "production",
             "dev", "demo", "mail", "ftp", "cdn", "static", "assets"
     );
-
-
 
     public void validateUserAndTenantStatus(User user) {
         if (!user.isEnabled()) {
@@ -49,11 +48,10 @@ public class AuthHelper {
         if (!TENANT_STATUS_ACTIVE.equals(user.getTenantStatus())) {
             throw new DisabledException(
                     String.format("Le tenant '%s' est désactivé ou suspendu",
-                            user.getTenantName()) // Use name from principal
+                            user.getTenantName())
             );
         }
     }
-
 
     public void validateSubdomain(String subdomain) {
         if (subdomain == null || subdomain.isBlank()) {
@@ -80,7 +78,6 @@ public class AuthHelper {
         }
     }
 
-
     public Tenant buildTenant(TenantRegistrationRequest request) {
         return Tenant.builder()
                 .name(request.getCompanyName())
@@ -91,19 +88,22 @@ public class AuthHelper {
                 .build();
     }
 
-
+    /**
+     * UPDATED: Build admin user with Role entity (not just ID).
+     */
     public User buildAdminUser(TenantRegistrationRequest request, Role adminRole, Tenant tenant) {
+        Set<Role> roles = new HashSet<>();
+        roles.add(adminRole);
+
         return User.builder()
                 .firstName(request.getAdminFirstName())
                 .lastName(request.getAdminLastName())
                 .email(request.getAdminEmail().toLowerCase())
                 .password(passwordEncoder.encode(request.getAdminPassword()))
-                .roleIds(Set.of(adminRole.getId())) // FIXED: Use roleIds
-                // .tenant(tenant) // REMOVED: User entity does not have this field
+                .roles(roles) // FIXED: Use Role entities
                 .enabled(true)
                 .build();
     }
-
 
     public AuthResponse buildAuthResponse(User user) {
         Long tenantId = user.getTenantId();
@@ -117,21 +117,25 @@ public class AuthHelper {
         return buildAuthResponse(user, accessToken, refreshToken);
     }
 
-
     public AuthResponse buildAuthResponse(User user, String accessToken, String refreshToken) {
-
         Set<String> roleNames = user.getRoleNames();
+
+        // Fallback: extract from roles if roleNames not populated
+        if (roleNames == null || roleNames.isEmpty()) {
+            roleNames = user.getRoles().stream()
+                    .map(Role::getName)
+                    .collect(Collectors.toSet());
+        }
 
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType(TOKEN_TYPE_BEARER)
                 .expiresIn(jwtExpiration / 1000)
-                .tenantId(user.getTenantId()) // Get from principal
+                .tenantId(user.getTenantId())
                 .username(user.getEmail())
-                .roles(roleNames) // Get from principal
-                .tenantName(user.getTenantName()) // Get from principal
+                .roles(roleNames)
+                .tenantName(user.getTenantName())
                 .build();
     }
-
 }

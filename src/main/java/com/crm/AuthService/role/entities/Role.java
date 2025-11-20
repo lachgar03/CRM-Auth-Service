@@ -1,5 +1,6 @@
 package com.crm.AuthService.role.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -7,7 +8,11 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
-
+/**
+ * Role entity - SIMPLIFIED VERSION.
+ * Roles are GLOBAL across all tenants.
+ * Removed bidirectional User relationship to avoid complexity.
+ */
 @Entity
 @Table(name = "roles", schema = "public")
 @Getter
@@ -31,7 +36,9 @@ public class Role {
     @Builder.Default
     private Boolean isSystemRole = false;
 
-
+    /**
+     * Permissions assigned to this role.
+     */
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "role_permissions",
@@ -42,13 +49,11 @@ public class Role {
     @Builder.Default
     private Set<Permission> permissions = new HashSet<>();
 
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
 
     @PrePersist
     protected void onCreate() {
@@ -61,8 +66,6 @@ public class Role {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
-
 
     public boolean hasPermission(String permissionName) {
         return permissions.stream()

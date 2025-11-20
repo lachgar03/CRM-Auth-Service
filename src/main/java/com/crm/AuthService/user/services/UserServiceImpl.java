@@ -37,14 +37,15 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final CacheEvictionService cacheEvictionService;
 
-
     private Tenant getRequiredTenant(Long tenantId) {
         return tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new TenantNotFoundException("Tenant not found with id: " + tenantId));
     }
 
-
-    private Set<Long> validateRoleNamesAndGetIds(Set<String> roleNames) {
+    /**
+     * UPDATED: Validates role names and returns Role entities (not just IDs).
+     */
+    private Set<Role> validateAndGetRoles(Set<String> roleNames) {
         if (roleNames == null || roleNames.isEmpty()) {
             return new HashSet<>();
         }
@@ -63,11 +64,8 @@ public class UserServiceImpl implements UserService {
             throw new RoleNotFoundException("Les rôles suivants n'existent pas: " + missingNames);
         }
 
-        return foundRoles.stream()
-                .map(Role::getId)
-                .collect(Collectors.toSet());
+        return foundRoles;
     }
-
 
     @Override
     @Transactional(readOnly = true)
@@ -102,19 +100,20 @@ public class UserServiceImpl implements UserService {
     public UserResponse createUser(CreateUserRequest request) {
         Long tenantId = TenantContextHolder.getRequiredTenantId();
         Tenant tenant = getRequiredTenant(tenantId);
+
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new EmailAlreadyExistsException(request.getEmail());
         }
 
-
-        Set<Long> roleIds = validateRoleNamesAndGetIds(request.getRoleNames());
+        // UPDATED: Get Role entities instead of just IDs
+        Set<Role> roles = validateAndGetRoles(request.getRoleNames());
 
         User user = User.builder()
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .email(request.getEmail().toLowerCase())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .roleIds(roleIds)
+                .roles(roles) // Set Role entities
                 .enabled(true)
                 .build();
 
@@ -150,10 +149,10 @@ public class UserServiceImpl implements UserService {
             user.setEnabled(request.getEnabled());
         }
 
-
+        // UPDATED: Set Role entities
         if (request.getRoleNames() != null) {
-            Set<Long> roleIds = validateRoleNamesAndGetIds(request.getRoleNames());
-            user.setRoleIds(roleIds);
+            Set<Role> roles = validateAndGetRoles(request.getRoleNames());
+            user.setRoles(roles);
         }
 
         user.setUpdatedAt(LocalDateTime.now());
@@ -232,8 +231,9 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
-        Set<Long> validatedRoleIds = validateRoleNamesAndGetIds(roleNames);
-        user.setRoleIds(validatedRoleIds);
+        // UPDATED: Set Role entities
+        Set<Role> validatedRoles = validateAndGetRoles(roleNames);
+        user.setRoles(validatedRoles);
         User savedUser = userRepository.save(user);
 
         cacheEvictionService.evictUserCaches(savedUser.getId(), savedUser.getEmail());
@@ -243,19 +243,15 @@ public class UserServiceImpl implements UserService {
         return toUserResponse(savedUser, tenant);
     }
 
-
     private UserResponse toUserResponse(User user, Tenant tenant) {
-        Set<RoleDto> roleDtos = new HashSet<>();
-        if (user.getRoleIds() != null && !user.getRoleIds().isEmpty()) {
-            Set<Role> roles = new HashSet<>(roleRepository.findAllById(user.getRoleIds()));
-            roleDtos = roles.stream()
-                    .map(role -> RoleDto.builder()
-                            .id(role.getId())
-                            .name(role.getName())
-                            .description(role.getDescription())
-                            .build())
-                    .collect(Collectors.toSet());
-        }
+        // UPDATED: Extract roles directly from User entity
+        Set<RoleDto> roleDtos = user.getRoles().stream()
+                .map(role -> RoleDto.builder()
+                        .id(role.getId())
+                        .name(role.getName())
+                        .description(role.getDescription())
+                        .build())
+                .collect(Collectors.toSet());
 
         return UserResponse.builder()
                 .id(user.getId())

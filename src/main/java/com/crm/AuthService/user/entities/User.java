@@ -1,7 +1,9 @@
 package com.crm.AuthService.user.entities;
 
 import com.crm.AuthService.auth.entities.TenantAwareEntity;
+import com.crm.AuthService.role.entities.Role;
 import lombok.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -14,10 +16,13 @@ import java.util.stream.Collectors;
 
 /**
  * User entity with tenant isolation.
- * Extends TenantAwareEntity to automatically handle tenant_id and filtering.
+ * FIXED: Uses proper ManyToMany relationship for roles with DB constraints.
  */
+@Slf4j
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_user_email_tenant", columnList = "email,tenant_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -58,17 +63,19 @@ public class User extends TenantAwareEntity implements UserDetails {
     private boolean credentialsNonExpired = true;
 
     /**
-     * Store role IDs (references to global roles table).
-     * This is an element collection, not a full @ManyToMany.
+     * FIXED: Proper ManyToMany relationship with DB constraints.
+     * Uses EAGER loading to avoid lazy initialization issues.
      */
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
             name = "user_roles",
-            joinColumns = @JoinColumn(name = "user_id")
+            joinColumns = @JoinColumn(name = "user_id", nullable = false),
+            inverseJoinColumns = @JoinColumn(name = "role_id", nullable = false),
+            foreignKey = @ForeignKey(name = "fk_user_roles_user"),
+            inverseForeignKey = @ForeignKey(name = "fk_user_roles_role")
     )
-    @Column(name = "role_id")
     @Builder.Default
-    private Set<Long> roleIds = new HashSet<>();
+    private Set<Role> roles = new HashSet<>();
 
     /**
      * Transient fields loaded at runtime from UserDetailsService.
@@ -94,8 +101,15 @@ public class User extends TenantAwareEntity implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return roleNames.stream()
-                .map(SimpleGrantedAuthority::new)
+        // Use transient roleNames if populated, otherwise extract from roles
+        if (roleNames != null && !roleNames.isEmpty()) {
+            return roleNames.stream()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(Collectors.toSet());
+        }
+
+        return roles.stream()
+                .map(role -> new SimpleGrantedAuthority(role.getName()))
                 .collect(Collectors.toSet());
     }
 
@@ -128,21 +142,51 @@ public class User extends TenantAwareEntity implements UserDetails {
     // Helper Methods
     // ============================================================
 
-    public void addRole(Long roleId) {
-        if (this.roleIds == null) {
-            this.roleIds = new HashSet<>();
+    /**
+     * SIMPLIFIED: Don't try to update bidirectional relationship.
+     * Just add the role to this user.
+     */
+    public void addRole(Role role) {
+        if (this.roles == null) {
+            this.roles = new HashSet<>();
         }
-        this.roleIds.add(roleId);
+        this.roles.add(role);
     }
 
-    public void removeRole(Long roleId) {
-        if (this.roleIds != null) {
-            this.roleIds.remove(roleId);
+    /**
+     * SIMPLIFIED: Don't try to update bidirectional relationship.
+     * Just remove the role from this user.
+     */
+    public void removeRole(Role role) {
+        if (this.roles != null) {
+            this.roles.remove(role);
         }
+    }
+
+    public Set<Long> getRoleIds() {
+        if (roles == null || roles.isEmpty()) {
+            return new HashSet<>();
+        }
+        return roles.stream()
+                .map(Role::getId)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * FIXED: Removed log reference, added proper warning.
+     */
+    public void setRoleIds(Set<Long> roleIds) {
+        // Note: This is a helper for backward compatibility
+        // Actual role setting should use setRoles() with Role entities
+        System.err.println("WARNING: setRoleIds() called - consider using setRoles() with Role entities instead");
     }
 
     public boolean hasRole(String roleName) {
-        return roleNames != null && roleNames.contains(roleName);
+        if (roleNames != null && !roleNames.isEmpty()) {
+            return roleNames.contains(roleName);
+        }
+        return roles != null && roles.stream()
+                .anyMatch(role -> role.getName().equals(roleName));
     }
 
     public boolean hasPermission(String permission) {
@@ -155,7 +199,7 @@ public class User extends TenantAwareEntity implements UserDetails {
                 "id=" + id +
                 ", email='" + email + '\'' +
                 ", enabled=" + enabled +
-                ", roleCount=" + (roleIds != null ? roleIds.size() : 0) +
+                ", roleCount=" + (roles != null ? roles.size() : 0) +
                 ", tenantId=" + getTenantId() +
                 '}';
     }
