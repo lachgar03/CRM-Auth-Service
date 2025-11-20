@@ -14,12 +14,13 @@ import java.util.Set;
 public class AuthResponse {
     private String accessToken;
     private String refreshToken;
+
+    @Builder.Default  // Add this annotation
     private String tokenType = "Bearer";
+
     private Long expiresIn;
     private Long tenantId;
     private String username;
-
-
     private Set<String> roles;
     private String tenantName;
 }
